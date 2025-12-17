@@ -6,7 +6,9 @@
 
 一个现代化的思维便签应用，让你的想法自由绽放
 
-[在线演示](https://mind-sticky.vercel.app) · [报告问题](https://github.com/yourusername/mind-sticky/issues) · [功能请求](https://github.com/yourusername/mind-sticky/issues/new)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Next.js](https://img.shields.io/badge/Next.js-16.0.10-black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![React](https://img.shields.io/badge/React-19.2.1-blue)
+
+[在线演示](https://mind-sticky.vercel.app) · [报告问题](https://github.com/LeoMorrison2001/mind-sticky/issues) · [功能请求](https://github.com/LeoMorrison2001/mind-sticky/issues/new)
 
 </div>
 
@@ -32,7 +34,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/mind-sticky.git
+git clone https://github.com/LeoMorrison2001/mind-sticky.git
 cd mind-sticky
 
 # 安装依赖
@@ -83,17 +85,19 @@ bun dev
 
 ## 🛠️ 技术栈
 
-- **框架** - [Next.js 16](https://nextjs.org/)
-- **UI 库** - [Tailwind CSS](https://tailwindcss.com/)
+- **框架** - [Next.js 16.0.10](https://nextjs.org/)
+- **UI 库** - [Tailwind CSS v4](https://tailwindcss.com/)
+- **前端框架** - [React 19.2.1](https://reactjs.org/)
 - **图标** - [Lucide React](https://lucide.dev/)
-- **日期处理** - [date-fns](https://date-fns.org/)
+- **日期处理** - [date-fns 4.1.0](https://date-fns.org/)
+- **日期选择器** - [React Datepicker 9.0.0](https://react-datepicker.com/)
 - **语言** - TypeScript
 
 ## 📦 部署
 
 ### Vercel (推荐)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/mind-sticky)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/LeoMorrison2001/mind-sticky)
 
 ### 其他平台
 
@@ -109,15 +113,6 @@ npm run start
 yarn start
 ```
 
-## 🤝 贡献
-
-欢迎贡献代码！请遵循以下步骤：
-
-1. Fork 这个仓库
-2. 创建你的功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开一个 Pull Request
 
 ## 📄 许可证
 
@@ -133,8 +128,8 @@ yarn start
 
 <div align="center">
 
-Made with ❤️ by [Your Name](https://github.com/yourusername)
+Made with ❤️ by [Leo Morrison](https://github.com/LeoMorrison2001)
 
-[⭐ Star](https://github.com/yourusername/mind-sticky) · [🐛 报告问题](https://github.com/yourusername/mind-sticky/issues)
+[⭐ Star](https://github.com/LeoMorrison2001/mind-sticky) · [🐛 报告问题](https://github.com/LeoMorrison2001/mind-sticky/issues)
 
 </div>
