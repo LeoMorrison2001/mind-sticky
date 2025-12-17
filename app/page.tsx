@@ -90,7 +90,7 @@ export default function Home() {
   });
 
   // Refs for Trash detection
-  const trashRef = useRef(null);
+  const trashRef = useRef<HTMLDivElement>(null);
 
   // --- Persistence ---
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function Home() {
   }, [notes, isClient]);
 
   // --- Helpers ---
-  const bringToFront = (id) => {
+  const bringToFront = (id: string) => {
     setNotes(prev => {
       const target = prev.find(n => n.id === id);
       if (!target) return prev;
@@ -129,15 +129,15 @@ export default function Home() {
     setNotes(prev => [...prev, newNote]);
   };
 
-  const updateNote = (id, fields) => {
+  const updateNote = (id: string, fields: Partial<Note>) => {
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...fields } : n));
   };
 
-  const deleteNote = (id) => {
+  const deleteNote = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
   };
 
-  const restoreNote = (id) => {
+  const restoreNote = (id: string) => {
     setNotes(prev => prev.map(n => n.id === id ? { ...n, isArchived: false } : n));
   };
 
@@ -170,7 +170,7 @@ export default function Home() {
 
   // Global Mouse Move
   useEffect(() => {
-    const handleMouseMove = (e) => {
+    const handleMouseMove = (e: MouseEvent) => {
       if (!dragState) return;
 
       const deltaX = e.clientX - dragState.startX;
@@ -453,7 +453,7 @@ export default function Home() {
               {/* Date Picker */}
               <DatePicker
                 selected={filterDate ? new Date(filterDate) : null}
-                onChange={(date: Date) => {
+                onChange={(date: Date | null) => {
                   if (date) {
                     setFilterDate(date.toISOString().split('T')[0]);
                   }
