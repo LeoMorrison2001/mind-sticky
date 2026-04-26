@@ -162,3 +162,64 @@ export const filterArchivedNotes = (notes: Note[], filterDate: string) => {
     return formatDateKey(new Date(archiveDate)) === filterDate;
   });
 };
+
+export const arrangeNotesInGrid = (
+  notes: Note[],
+  options?: {
+    columns?: number;
+    gapX?: number;
+    gapY?: number;
+    startX?: number;
+    startY?: number;
+  }
+) => {
+  const activeNotes = notes.filter((note) => !note.isArchived);
+  const archivedNotes = notes.filter((note) => note.isArchived);
+
+  if (activeNotes.length === 0) {
+    return {
+      notes,
+      bounds: null,
+    };
+  }
+
+  const columns = Math.max(1, options?.columns ?? Math.ceil(Math.sqrt(activeNotes.length)));
+  const gapX = options?.gapX ?? 24;
+  const gapY = options?.gapY ?? 24;
+  const startX = options?.startX ?? 48;
+  const startY = options?.startY ?? 120;
+
+  const sortedNotes = [...activeNotes].sort((left, right) => {
+    if (left.isPinned !== right.isPinned) {
+      return left.isPinned ? -1 : 1;
+    }
+
+    return left.zIndex - right.zIndex;
+  });
+
+  const arrangedActiveNotes = sortedNotes.map((note, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    return {
+      ...note,
+      x: startX + column * (note.width + gapX),
+      y: startY + row * (note.height + gapY),
+    };
+  });
+
+  const noteById = new Map(arrangedActiveNotes.map((note) => [note.id, note]));
+  const arrangedNotes = notes.map((note) => noteById.get(note.id) ?? note);
+
+  const maxRight = Math.max(...arrangedActiveNotes.map((note) => note.x + note.width));
+  const maxBottom = Math.max(...arrangedActiveNotes.map((note) => note.y + note.height));
+
+  return {
+    notes: [...arrangedNotes.filter((note) => !note.isArchived), ...archivedNotes],
+    bounds: {
+      minX: startX,
+      minY: startY,
+      maxX: maxRight,
+      maxY: maxBottom,
+    },
+  };
+};

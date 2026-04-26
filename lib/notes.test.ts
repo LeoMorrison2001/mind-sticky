@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   archiveNoteRecord,
+  arrangeNotesInGrid,
   bringNoteToFront,
   createNote,
   filterArchivedNotes,
@@ -84,5 +85,29 @@ describe('notes helpers', () => {
     ];
     const reordered = bringNoteToFront(notes, 'note-1');
     expect(reordered.find((item) => item.id === 'note-1')?.zIndex).toBe(3);
+  });
+
+  it('arranges active notes into a predictable grid without touching archived notes', () => {
+    const archived = archiveNoteRecord({ ...baseNote, id: 'archived' }, '2026-04-27T08:00:00.000Z');
+    const note2 = { ...baseNote, id: 'note-2', zIndex: 2 };
+    const note3 = { ...baseNote, id: 'note-3', zIndex: 3 };
+    const arranged = arrangeNotesInGrid([baseNote, note2, note3, archived], {
+      columns: 2,
+      startX: 100,
+      startY: 200,
+      gapX: 10,
+      gapY: 20,
+    });
+
+    expect(arranged.bounds).toEqual({
+      minX: 100,
+      minY: 200,
+      maxX: 630,
+      maxY: 660,
+    });
+    expect(arranged.notes.find((note) => note.id === 'note-1')).toMatchObject({ x: 100, y: 200 });
+    expect(arranged.notes.find((note) => note.id === 'note-2')).toMatchObject({ x: 370, y: 200 });
+    expect(arranged.notes.find((note) => note.id === 'note-3')).toMatchObject({ x: 100, y: 440 });
+    expect(arranged.notes.find((note) => note.id === 'archived')).toMatchObject({ isArchived: true });
   });
 });

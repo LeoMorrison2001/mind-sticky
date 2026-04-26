@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2, Archive, X, Pin, Search, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, Archive, X, Pin, Search, RotateCcw, LayoutGrid } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import { zhCN } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import '../styles/datepicker.css';
 import {
   archiveNoteRecord,
+  arrangeNotesInGrid,
   bringNoteToFront,
   createNote,
   filterArchivedNotes,
@@ -225,6 +226,26 @@ export default function Home() {
     );
   };
 
+  const organizeNotes = () => {
+    setNotes((prev) => {
+      const activeCount = prev.filter((note) => !note.isArchived).length;
+      const columns = Math.max(
+        1,
+        Math.min(4, Math.ceil(Math.sqrt(activeCount || 1)))
+      );
+      const arranged = arrangeNotesInGrid(prev, { columns });
+
+      if (arranged.bounds) {
+        setViewport({
+          x: 48 - arranged.bounds.minX,
+          y: 96 - arranged.bounds.minY,
+        });
+      }
+
+      return arranged.notes;
+    });
+  };
+
   const handlePointerDown = (
     e: React.PointerEvent<HTMLDivElement>,
     note: Note,
@@ -389,7 +410,7 @@ export default function Home() {
         }}
       />
 
-      <div className="absolute top-6 left-6 z-50 flex flex-col gap-3">
+      <div className="absolute top-6 left-6 z-[10000] flex flex-col gap-3">
         <button
           onClick={addNote}
           className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
@@ -409,6 +430,17 @@ export default function Home() {
           <RotateCcw size={20} strokeWidth={2.2} />
           <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
             {'\u56de\u5230\u4e2d\u5fc3'}
+          </div>
+        </button>
+
+        <button
+          onClick={organizeNotes}
+          className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
+          title="\u4e00\u952e\u6574\u7406"
+        >
+          <LayoutGrid size={20} strokeWidth={2.2} />
+          <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
+            {'\u4e00\u952e\u6574\u7406'}
           </div>
         </button>
 
