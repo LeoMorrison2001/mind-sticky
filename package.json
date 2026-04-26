@@ -6,12 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run"
   },
   "dependencies": {
     "date-fns": "^4.1.0",
     "lucide-react": "^0.561.0",
-    "next": "16.0.10",
+    "next": "16.2.4",
     "react": "19.2.1",
     "react-datepicker": "^9.0.0",
     "react-dom": "19.2.1"
@@ -22,8 +23,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.0.10",
+    "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
   }
 }

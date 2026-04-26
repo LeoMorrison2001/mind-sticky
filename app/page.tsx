@@ -1,40 +1,28 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import {
-  Plus,
-  Trash2,
-  Archive,
-  X,
-  Pin,
-  Search,
-  RotateCcw
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Trash2, Archive, X, Pin, Search, RotateCcw } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import { zhCN } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
 import '../styles/datepicker.css';
-
-// Types
-interface Note {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  title: string;
-  content: string;
-  color: string;
-  isPinned: boolean;
-  isArchived: boolean;
-  createdAt: string;
-  archivedAt?: string;
-  zIndex: number;
-}
+import {
+  archiveNoteRecord,
+  bringNoteToFront,
+  createNote,
+  filterArchivedNotes,
+  formatDateKey,
+  getNextZIndex,
+  parseDateKey,
+  readNotesFromStorage,
+  restoreNoteRecord,
+  type Note,
+} from '../lib/notes';
 
 interface DragState {
   type: 'MOVE' | 'RESIZE';
   id: string;
+  pointerId: number;
   startX: number;
   startY: number;
   initialX: number;
@@ -43,14 +31,6 @@ interface DragState {
   initialH?: number;
 }
 
-/**
- * Utility: Generate a random ID
- */
-const generateId = () => Math.random().toString(36).substring(2, 9);
-
-/**
- * Constants: Modern Pastel Colors
- */
 const NOTE_COLORS = [
   { id: 'yellow', bg: 'bg-amber-50', text: 'text-amber-900', border: 'border-amber-200/60', dot: 'bg-amber-400' },
   { id: 'blue', bg: 'bg-blue-50', text: 'text-blue-900', border: 'border-blue-200/60', dot: 'bg-blue-400' },
@@ -58,58 +38,41 @@ const NOTE_COLORS = [
   { id: 'rose', bg: 'bg-rose-50', text: 'text-rose-900', border: 'border-rose-200/60', dot: 'bg-rose-400' },
   { id: 'purple', bg: 'bg-violet-50', text: 'text-violet-900', border: 'border-violet-200/60', dot: 'bg-violet-400' },
   { id: 'gray', bg: 'bg-gray-50', text: 'text-gray-900', border: 'border-gray-200/60', dot: 'bg-gray-400' },
-];
+] as const;
 
-const DEFAULT_WIDTH = 260;
-const DEFAULT_HEIGHT = 220;
 const STORAGE_KEY = 'mind-sticky-data';
-const NOTE_MIN_X = 24;
-const NOTE_MIN_Y = 96;
-const NOTE_VIEWPORT_PADDING = 24;
-
-const formatDateKey = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const parseDateKey = (value: string) => {
-  const [year, month, day] = value.split('-').map(Number);
-
-  if (!year || !month || !day) {
-    return null;
-  }
-
-  return new Date(year, month - 1, day);
-};
-
-const normalizeStoredNotes = (value: unknown): Note[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((item): item is Note => {
-    return typeof item === 'object' && item !== null && 'id' in item;
-  });
-};
-
 
 export default function Home() {
-  // --- State ---
   const [notes, setNotes] = useState<Note[]>([]);
-  const hasLoadedNotesRef = useRef(false);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isTrashActive, setIsTrashActive] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
+  const [filterDate, setFilterDate] = useState(() => formatDateKey(new Date()));
 
-  // Load local data once on mount.
+  const trashRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<Note[]>([]);
+  const dragStateRef = useRef<DragState | null>(null);
+  const hasLoadedNotesRef = useRef(false);
+  const isTrashActiveRef = useRef(false);
+  const pendingFrameRef = useRef<number | null>(null);
+  const pendingUpdateRef = useRef<{
+    id: string;
+    type: DragState['type'];
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
   useEffect(() => {
     let initialNotes: Note[] = [];
 
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-
-      if (saved) {
-        initialNotes = normalizeStoredNotes(JSON.parse(saved));
-      }
+      initialNotes = readNotesFromStorage(localStorage.getItem(STORAGE_KEY));
     } catch (error) {
       console.error('Failed to read saved notes from localStorage.', error);
       localStorage.removeItem(STORAGE_KEY);
@@ -125,17 +88,6 @@ export default function Home() {
     };
   }, []);
 
-  const [dragState, setDragState] = useState<DragState | null>(null); // { type: 'MOVE' | 'RESIZE', id, startX, startY, initial... }
-  const [isTrashActive, setIsTrashActive] = useState(false);
-  const [showArchive, setShowArchive] = useState(false);
-
-  // Archive Filter State
-  const [filterDate, setFilterDate] = useState(() => formatDateKey(new Date()));
-
-  // Refs for Trash detection
-  const trashRef = useRef<HTMLDivElement>(null);
-
-  // --- Persistence ---
   useEffect(() => {
     if (!hasLoadedNotesRef.current || dragState) {
       return;
@@ -150,212 +102,249 @@ export default function Home() {
     };
   }, [notes, dragState]);
 
-  // --- Helpers ---
-  const bringToFront = (id: string) => {
-    setNotes(prev => {
-      const target = prev.find(n => n.id === id);
-      if (!target) return prev;
-      const others = prev.filter(n => n.id !== id);
-      return [...others, target];
+  useEffect(() => {
+    return () => {
+      if (pendingFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingFrameRef.current);
+      }
+    };
+  }, []);
+
+  const applyPendingDragUpdate = useCallback(() => {
+    const update = pendingUpdateRef.current;
+    if (!update) {
+      return;
+    }
+
+    pendingUpdateRef.current = null;
+    setNotes((prev) =>
+      prev.map((note) => {
+        if (note.id !== update.id) {
+          return note;
+        }
+
+        if (update.type === 'MOVE') {
+          return {
+            ...note,
+            x: update.x ?? note.x,
+            y: update.y ?? note.y,
+          };
+        }
+
+        return {
+          ...note,
+          width: update.width ?? note.width,
+          height: update.height ?? note.height,
+        };
+      })
+    );
+  }, []);
+
+  const scheduleDragUpdate = useCallback((update: NonNullable<typeof pendingUpdateRef.current>) => {
+    pendingUpdateRef.current = update;
+
+    if (pendingFrameRef.current !== null) {
+      return;
+    }
+
+    pendingFrameRef.current = window.requestAnimationFrame(() => {
+      pendingFrameRef.current = null;
+      applyPendingDragUpdate();
     });
+  }, [applyPendingDragUpdate]);
+
+  const bringToFront = (id: string) => {
+    setNotes((prev) => bringNoteToFront(prev, id));
   };
 
   const addNote = () => {
-    const maxX = Math.max(
-      NOTE_MIN_X,
-      window.innerWidth - DEFAULT_WIDTH - NOTE_VIEWPORT_PADDING
-    );
-    const maxY = Math.max(
-      NOTE_MIN_Y,
-      window.innerHeight - DEFAULT_HEIGHT - NOTE_VIEWPORT_PADDING
-    );
-
-    const newNote = {
-      id: generateId(),
-      x: NOTE_MIN_X + Math.random() * Math.max(0, maxX - NOTE_MIN_X),
-      y: NOTE_MIN_Y + Math.random() * Math.max(0, maxY - NOTE_MIN_Y),
-      width: DEFAULT_WIDTH,
-      height: DEFAULT_HEIGHT,
-      title: '思维贴',
-      content: '',
-      color: 'yellow',
-      isPinned: false,
-      isArchived: false,
-      createdAt: new Date().toISOString(),
-      zIndex: Date.now()
-    };
-    setNotes(prev => [...prev, newNote]);
+    setNotes((prev) => [
+      ...prev,
+      createNote(window.innerWidth, window.innerHeight, getNextZIndex(prev)),
+    ]);
   };
 
   const updateNote = (id: string, fields: Partial<Note>) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...fields } : n));
+    setNotes((prev) => prev.map((note) => (note.id === id ? { ...note, ...fields } : note)));
   };
 
   const deleteNote = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
+    setNotes((prev) => prev.filter((note) => note.id !== id));
   };
 
   const restoreNote = (id: string) => {
-    setNotes(prev => prev.map(n => (
-      n.id === id
-        ? { ...n, isArchived: false, archivedAt: undefined }
-        : n
-    )));
+    setNotes((prev) =>
+      prev.map((note) => (note.id === id ? restoreNoteRecord(note) : note))
+    );
   };
 
   const archiveNote = (id: string) => {
-    const archivedAt = new Date().toISOString();
-    setNotes(prev => prev.map(n => (
-      n.id === id
-        ? { ...n, isArchived: true, archivedAt }
-        : n
-    )));
+    setNotes((prev) =>
+      prev.map((note) => (note.id === id ? archiveNoteRecord(note) : note))
+    );
   };
 
-  // --- Event Handlers (Global) ---
+  const handlePointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+    note: Note,
+    type: DragState['type']
+  ) => {
+    if (note.isPinned && type === 'MOVE') {
+      return;
+    }
 
-  // Mouse Down - Start Drag or Resize
-  const handleMouseDown = (e: React.MouseEvent, note: Note, type: 'MOVE' | 'RESIZE') => {
-    if (note.isPinned && type === 'MOVE') return;
-
-    // Ensure we don't block input focus, but stop drag propagation
     const target = e.target as HTMLElement;
     if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-        e.preventDefault(); // Prevents text selection while dragging container
+      e.preventDefault();
     }
     e.stopPropagation();
 
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     bringToFront(note.id);
 
-    setDragState({
+    const nextDragState: DragState = {
       type,
       id: note.id,
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       initialX: note.x,
       initialY: note.y,
       initialW: note.width,
-      initialH: note.height
-    });
+      initialH: note.height,
+    };
+
+    dragStateRef.current = nextDragState;
+    setDragState(nextDragState);
   };
 
-  // Global Mouse Move
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!dragState) return;
+    if (!dragState) {
+      return;
+    }
 
-      const deltaX = e.clientX - dragState.startX;
-      const deltaY = e.clientY - dragState.startY;
+    dragStateRef.current = dragState;
 
-      if (dragState.type === 'MOVE') {
-        // Move Logic
-        setNotes(prev => prev.map(n => {
-          if (n.id !== dragState.id) return n;
-          return {
-            ...n,
-            x: dragState.initialX + deltaX,
-            y: dragState.initialY + deltaY
-          };
-        }));
+    const handlePointerMove = (e: PointerEvent) => {
+      const activeDrag = dragStateRef.current;
+      if (!activeDrag || e.pointerId !== activeDrag.pointerId) {
+        return;
+      }
 
-        // Trash Detection Logic
+      const deltaX = e.clientX - activeDrag.startX;
+      const deltaY = e.clientY - activeDrag.startY;
+
+      if (activeDrag.type === 'MOVE') {
+        scheduleDragUpdate({
+          id: activeDrag.id,
+          type: 'MOVE',
+          x: activeDrag.initialX + deltaX,
+          y: activeDrag.initialY + deltaY,
+        });
+
         if (trashRef.current) {
           const trashRect = trashRef.current.getBoundingClientRect();
-          const isOver = (
+          const isOver =
             e.clientX >= trashRect.left &&
             e.clientX <= trashRect.right &&
             e.clientY >= trashRect.top &&
-            e.clientY <= trashRect.bottom
-          );
+            e.clientY <= trashRect.bottom;
+
+          isTrashActiveRef.current = isOver;
           setIsTrashActive(isOver);
         }
-
-      } else if (dragState.type === 'RESIZE') {
-        // Resize Logic
-        setNotes(prev => prev.map(n => {
-          if (n.id !== dragState.id) return n;
-          return {
-            ...n,
-            width: Math.max(200, (dragState.initialW || n.width) + deltaX), // Min width
-            height: Math.max(150, (dragState.initialH || n.height) + deltaY) // Min height
-          };
-        }));
+      } else {
+        scheduleDragUpdate({
+          id: activeDrag.id,
+          type: 'RESIZE',
+          width: Math.max(200, (activeDrag.initialW ?? 260) + deltaX),
+          height: Math.max(150, (activeDrag.initialH ?? 220) + deltaY),
+        });
       }
     };
 
-    const handleMouseUp = () => {
-      if (!dragState) return;
-
-      if (dragState.type === 'MOVE' && isTrashActive) {
-        deleteNote(dragState.id);
+    const finishDrag = (pointerId?: number) => {
+      const activeDrag = dragStateRef.current;
+      if (!activeDrag || (pointerId !== undefined && activeDrag.pointerId !== pointerId)) {
+        return;
       }
 
+      if (pendingFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingFrameRef.current);
+        pendingFrameRef.current = null;
+        applyPendingDragUpdate();
+      }
+
+      if (activeDrag.type === 'MOVE' && isTrashActiveRef.current) {
+        deleteNote(activeDrag.id);
+      }
+
+      pendingUpdateRef.current = null;
+      dragStateRef.current = null;
+      isTrashActiveRef.current = false;
       setDragState(null);
       setIsTrashActive(false);
     };
 
-    if (dragState) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
+    const handlePointerUp = (e: PointerEvent) => {
+      finishDrag(e.pointerId);
+    };
+
+    const handlePointerCancel = (e: PointerEvent) => {
+      finishDrag(e.pointerId);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [dragState, isTrashActive]);
+  }, [applyPendingDragUpdate, dragState, scheduleDragUpdate]);
 
-
-  // --- Filtered Notes for Archive ---
-  const archivedNotes = useMemo(() => {
-    return notes.filter(n => {
-      if (!n.isArchived) return false;
-      const archiveDate = n.archivedAt ?? n.createdAt;
-      return formatDateKey(new Date(archiveDate)) === filterDate;
-    });
-  }, [notes, filterDate]);
+  const archivedNotes = useMemo(() => filterArchivedNotes(notes, filterDate), [notes, filterDate]);
 
   return (
-    <div className="w-full h-screen overflow-hidden bg-gray-50 relative font-sans text-gray-800">
-
-      {/* --- Background Pattern: Subtle Grid --- */}
+    <div className="relative h-screen w-full overflow-hidden bg-gray-50 font-sans text-gray-800">
       <div
-        className="absolute inset-0 opacity-[0.4] pointer-events-none"
+        className="pointer-events-none absolute inset-0 opacity-[0.4]"
         style={{
-          backgroundImage: 'linear-gradient(#E5E7EB 1px, transparent 1px), linear-gradient(90deg, #E5E7EB 1px, transparent 1px)',
-          backgroundSize: '40px 40px'
+          backgroundImage:
+            'linear-gradient(#E5E7EB 1px, transparent 1px), linear-gradient(90deg, #E5E7EB 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
         }}
       />
 
-      {/* --- Toolbar --- */}
       <div className="absolute top-6 left-6 z-50 flex flex-col gap-3">
         <button
           onClick={addNote}
-          className="bg-white hover:bg-gray-50 text-gray-800 p-3.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.08)] border border-gray-200 transition-all hover:scale-105 active:scale-95 flex items-center justify-center group relative"
-          title="新建便签"
+          className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
+          title="\u65b0\u5efa\u4fbf\u7b7e"
         >
           <Plus size={22} strokeWidth={2.5} />
-          <div className="absolute left-full ml-3 bg-gray-800 text-white px-2 py-1 rounded-md text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            新建便签
+          <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
+            {'\u65b0\u5efa\u4fbf\u7b7e'}
           </div>
         </button>
 
         <button
           onClick={() => setShowArchive(true)}
-          className="bg-white hover:bg-gray-50 text-gray-800 p-3.5 rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.08)] border border-gray-200 transition-all hover:scale-105 active:scale-95 flex items-center justify-center group relative"
-          title="归档"
+          className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
+          title="\u5f52\u6863"
         >
           <Archive size={22} strokeWidth={2} />
-           <div className="absolute left-full ml-3 bg-gray-800 text-white px-2 py-1 rounded-md text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            归档
+          <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
+            {'\u5f52\u6863'}
           </div>
         </button>
       </div>
 
-      {/* --- Canvas Area (Active Notes) --- */}
-      <div className="w-full h-full relative">
-        {notes.filter(n => !n.isArchived).map((note) => {
-          const styleConfig = NOTE_COLORS.find(c => c.id === note.color) || NOTE_COLORS[0];
+      <div className="relative h-full w-full">
+        {notes.filter((note) => !note.isArchived).map((note) => {
+          const styleConfig = NOTE_COLORS.find((color) => color.id === note.color) ?? NOTE_COLORS[0];
           const isDragging = dragState?.id === note.id;
 
           return (
@@ -366,162 +355,157 @@ export default function Home() {
                 top: note.y,
                 width: note.width,
                 height: note.height,
-                zIndex: isDragging ? 999 : 1, // Simple stacking
+                zIndex: isDragging ? 9999 : note.zIndex,
+                touchAction: 'none',
               }}
-              // Modern Card: Micro-rounded (rounded-xl), subtle border, nice shadow
               className={`
-                group absolute flex flex-col
-                rounded-xl border
+                group absolute flex flex-col rounded-xl border
                 transition-shadow duration-200 ease-out
                 ${styleConfig.bg} ${styleConfig.text} ${styleConfig.border}
-                ${isDragging ? 'shadow-2xl cursor-grabbing scale-[1.01]' : 'shadow-md hover:shadow-lg'}
+                ${isDragging ? 'scale-[1.01] cursor-grabbing shadow-2xl' : 'shadow-md hover:shadow-lg'}
                 ${note.isPinned ? 'shadow-xl' : ''}
               `}
-              onMouseDown={(e) => {
-                // Clicking anywhere on the note brings it to front (unless interacting with controls)
-                 const target = e.target as HTMLElement;
-                 if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && target.tagName !== 'BUTTON') {
-                   handleMouseDown(e, note, 'MOVE');
-                 } else {
-                   // Even if clicking input, bring to front
-                   bringToFront(note.id);
-                 }
+              onPointerDown={(e) => {
+                const target = e.target as HTMLElement;
+                if (
+                  target.tagName !== 'INPUT' &&
+                  target.tagName !== 'TEXTAREA' &&
+                  target.tagName !== 'BUTTON'
+                ) {
+                  handlePointerDown(e, note, 'MOVE');
+                } else {
+                  bringToFront(note.id);
+                }
               }}
             >
-              {/* Note Header */}
-              <div className="flex items-center justify-between px-4 pt-3 pb-1 select-none">
-                {/* Left: Date & Pin */}
+              <div className="flex select-none items-center justify-between px-4 pt-3 pb-1">
                 <div className="flex items-center gap-2">
-                   <button
-                    onMouseDown={(e) => e.stopPropagation()}
+                  <button
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => updateNote(note.id, { isPinned: !note.isPinned })}
                     className={`
-                      transition-colors p-1 rounded hover:bg-black/5
+                      rounded p-1 transition-colors hover:bg-black/5
                       ${note.isPinned ? 'text-red-500' : 'text-black/20 hover:text-black/50'}
                     `}
-                    title={note.isPinned ? "取消固定" : "固定"}
+                    title={note.isPinned ? '\u53d6\u6d88\u56fa\u5b9a' : '\u56fa\u5b9a'}
                   >
-                    <Pin size={14} fill={note.isPinned ? "currentColor" : "none"} />
+                    <Pin size={14} fill={note.isPinned ? 'currentColor' : 'none'} />
                   </button>
                   <span className="text-[10px] font-medium opacity-40">
-                    {new Date(note.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    {new Date(note.createdAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
                 </div>
 
-                {/* Right: Actions (Always Visible now for better UX) */}
                 <div className="flex items-center gap-2">
-                  {/* Color Picker - Clearer Hit Targets */}
                   <div className="flex gap-1">
-                    {NOTE_COLORS.map(c => (
+                    {NOTE_COLORS.map((color) => (
                       <button
-                        key={c.id}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={() => updateNote(note.id, { color: c.id })}
+                        key={color.id}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => updateNote(note.id, { color: color.id })}
                         className={`
-                          w-4 h-4 rounded-full transition-transform hover:scale-110
-                          ${c.dot} border border-black/5
-                          ${note.color === c.id ? 'ring-2 ring-black/20 scale-110' : ''}
+                          h-4 w-4 rounded-full border border-black/5 transition-transform hover:scale-110
+                          ${color.dot}
+                          ${note.color === color.id ? 'scale-110 ring-2 ring-black/20' : ''}
                         `}
-                        title="更改颜色"
+                        title="\u66f4\u6539\u989c\u8272"
                       />
                     ))}
                   </div>
 
-                  {/* Archive Button */}
                   <button
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => archiveNote(note.id)}
-                    className="text-black/30 hover:text-black/70 p-1 rounded hover:bg-black/5 transition-colors ml-1"
-                    title="归档"
+                    className="ml-1 rounded p-1 text-black/30 transition-colors hover:bg-black/5 hover:text-black/70"
+                    title="\u5f52\u6863"
                   >
                     <Archive size={16} />
                   </button>
                 </div>
               </div>
 
-              {/* Note Body */}
-              <div className="flex-1 flex flex-col px-4 pb-4 pt-1 overflow-hidden cursor-text">
+              <div className="flex flex-1 cursor-text flex-col overflow-hidden px-4 pt-1 pb-4">
                 <input
                   type="text"
                   value={note.title}
-                  onMouseDown={(e) => e.stopPropagation()} // Allow text selection without drag
+                  onPointerDown={(e) => e.stopPropagation()}
                   onChange={(e) => updateNote(note.id, { title: e.target.value })}
-                  placeholder="标题"
-                  className="bg-transparent font-bold text-lg mb-1 focus:outline-none placeholder-black/20 w-full"
+                  placeholder="\u6807\u9898"
+                  className="mb-1 w-full bg-transparent text-lg font-bold placeholder-black/20 focus:outline-none"
                 />
                 <textarea
                   value={note.content}
-                  onMouseDown={(e) => e.stopPropagation()} // Allow text selection without drag
+                  onPointerDown={(e) => e.stopPropagation()}
                   onChange={(e) => updateNote(note.id, { content: e.target.value })}
-                  placeholder="在此输入内容..."
-                  className="flex-1 bg-transparent resize-none focus:outline-none text-[14px] leading-relaxed placeholder-black/30 w-full selection:bg-black/10"
+                  placeholder="\u5728\u6b64\u8f93\u5165\u5185\u5bb9..."
+                  className="flex-1 w-full resize-none bg-transparent text-[14px] leading-relaxed placeholder-black/30 selection:bg-black/10 focus:outline-none"
                 />
               </div>
 
-              {/* Resize Handle */}
               <div
-                onMouseDown={(e) => handleMouseDown(e, note, 'RESIZE')}
-                className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize flex items-center justify-center opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
+                onPointerDown={(e) => handlePointerDown(e, note, 'RESIZE')}
+                className="absolute right-0 bottom-0 flex h-6 w-6 cursor-nwse-resize items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 hover:opacity-100"
               >
-                 <div className="w-1.5 h-1.5 rounded-full bg-black/10 hover:bg-black/30" />
+                <div className="h-1.5 w-1.5 rounded-full bg-black/10 hover:bg-black/30" />
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* --- Trash Zone --- */}
       <div
         ref={trashRef}
-        className={`fixed bottom-8 right-8 transition-all duration-300 z-40 rounded-2xl flex items-center justify-center border
-          ${isTrashActive
-            ? 'w-28 h-28 bg-red-100/90 backdrop-blur border-red-200 text-red-500 scale-110 shadow-lg'
-            : dragState?.type === 'MOVE'
-              ? 'w-20 h-20 bg-white/90 backdrop-blur border-gray-200 text-gray-400 translate-y-0 opacity-100 shadow-xl'
-              : 'w-16 h-16 opacity-0 translate-y-20 pointer-events-none'
+        className={`fixed right-8 bottom-8 z-40 flex items-center justify-center rounded-2xl border transition-all duration-300
+          ${
+            isTrashActive
+              ? 'h-28 w-28 scale-110 border-red-200 bg-red-100/90 text-red-500 shadow-lg backdrop-blur'
+              : dragState?.type === 'MOVE'
+                ? 'h-20 w-20 translate-y-0 border-gray-200 bg-white/90 text-gray-400 opacity-100 shadow-xl backdrop-blur'
+                : 'pointer-events-none h-16 w-16 translate-y-20 opacity-0'
           }
         `}
       >
-        <Trash2 size={isTrashActive ? 40 : 28} className={`transition-transform duration-300 ${isTrashActive ? 'scale-110' : ''}`} />
+        <Trash2
+          size={isTrashActive ? 40 : 28}
+          className={`transition-transform duration-300 ${isTrashActive ? 'scale-110' : ''}`}
+        />
       </div>
 
-      {/* --- Archive Sidebar --- */}
       {showArchive && (
         <div className="fixed inset-0 z-[100] flex justify-end">
-          {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/10 backdrop-blur-[1px] transition-opacity"
+            className="absolute inset-0 bg-black/10 backdrop-blur-[1px]"
             onClick={() => setShowArchive(false)}
           />
 
-          {/* Sidebar Panel */}
-          <div className="relative w-80 h-full bg-white shadow-2xl transform transition-transform flex flex-col border-l border-gray-100">
-            <div className="p-5 flex items-center justify-between bg-gray-50/50 border-b border-gray-100">
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <Archive size={18} className="text-gray-500"/>
-                归档箱
+          <div className="relative flex h-full w-80 flex-col border-l border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5">
+              <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+                <Archive size={18} className="text-gray-500" />
+                {'\u5f52\u6863\u7ba1\u7406'}
               </h2>
               <button
                 onClick={() => setShowArchive(false)}
-                className="p-1.5 hover:bg-gray-200/50 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-200/50 hover:text-gray-600"
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Filter Section */}
-            <div className="px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-sm font-medium text-gray-700">筛选日期</label>
+            <div className="border-b border-gray-100 px-5 py-4">
+              <div className="mb-3 flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700">{'\u7b5b\u9009\u65e5\u671f'}</label>
                 <button
                   onClick={() => setFilterDate(formatDateKey(new Date()))}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700"
                 >
-                  今天
+                  {'\u4eca\u5929'}
                 </button>
               </div>
 
-              {/* Date Picker */}
               <DatePicker
                 selected={filterDate ? parseDateKey(filterDate) : null}
                 onChange={(date: Date | null) => {
@@ -529,14 +513,13 @@ export default function Home() {
                     setFilterDate(formatDateKey(date));
                   }
                 }}
-                dateFormat="yyyy年MM月dd日"
+                dateFormat="yyyy\u5e74 M\u6708 d\u65e5"
                 locale={zhCN}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                placeholderText="选择日期"
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                placeholderText="\u9009\u62e9\u65e5\u671f"
                 maxDate={new Date()}
-                showMonthYearPicker={false}
                 inline={false}
-                calendarClassName="custom-datepicker shadow-lg border border-gray-200 rounded-lg"
+                calendarClassName="custom-datepicker rounded-lg border border-gray-200 shadow-lg"
                 renderCustomHeader={({
                   date,
                   decreaseMonth,
@@ -548,48 +531,56 @@ export default function Home() {
                     <button
                       onClick={decreaseMonth}
                       disabled={prevMonthButtonDisabled}
-                      className="p-1 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="rounded-md p-1 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
                     </button>
                     <span className="text-sm font-medium text-gray-900">
-                      {date.getFullYear()}年{date.getMonth() + 1}月
+                      {date.getFullYear()}
+                      {'\u5e74 '}
+                      {date.getMonth() + 1}
+                      {'\u6708'}
                     </span>
                     <button
                       onClick={increaseMonth}
                       disabled={nextMonthButtonDisabled}
-                      className="p-1 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="rounded-md p-1 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </button>
                   </div>
                 )}
-                formatWeekDay={(day) => ['日', '一', '二', '三', '四', '五', '六'][['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(day)]}
+                formatWeekDay={(day) =>
+                  ['\u65e5', '\u4e00', '\u4e8c', '\u4e09', '\u56db', '\u4e94', '\u516d'][
+                    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(day)
+                  ]
+                }
               />
-
             </div>
 
-            {/* List Section */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-3 bg-gray-50/30">
+            <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50/30 p-5">
               {archivedNotes.length === 0 ? (
-                <div className="text-center py-10 text-gray-400">
+                <div className="py-10 text-center text-gray-400">
                   <Search size={40} className="mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">暂无归档</p>
+                  <p className="text-sm">{'\u6682\u65e0\u5f52\u6863'}</p>
                 </div>
               ) : (
-                archivedNotes.map(note => {
-                  const styleConfig = NOTE_COLORS.find(c => c.id === note.color) || NOTE_COLORS[0];
+                archivedNotes.map((note) => {
+                  const styleConfig = NOTE_COLORS.find((color) => color.id === note.color) ?? NOTE_COLORS[0];
                   return (
-                    <div key={note.id} className={`p-4 rounded-xl border transition-transform hover:scale-[1.02] group relative ${styleConfig.bg} ${styleConfig.border}`}>
-                      <h3 className="font-bold text-gray-800 truncate text-sm mb-1">
-                        {note.title || '无标题'}
+                    <div
+                      key={note.id}
+                      className={`group relative rounded-xl border p-4 transition-transform hover:scale-[1.02] ${styleConfig.bg} ${styleConfig.border}`}
+                    >
+                      <h3 className="mb-1 truncate text-sm font-bold text-gray-800">
+                        {note.title || '\u65e0\u6807\u9898'}
                       </h3>
-                      <p className="text-xs text-gray-600/80 line-clamp-2">
-                        {note.content || '(无内容)'}
+                      <p className="line-clamp-2 text-xs text-gray-600/80">
+                        {note.content || '(\u65e0\u5185\u5bb9)'}
                       </p>
                       <div className="mt-3 flex items-center justify-between text-[10px] font-medium text-black/30">
                         <span>{new Date(note.archivedAt ?? note.createdAt).toLocaleTimeString()}</span>
@@ -597,29 +588,28 @@ export default function Home() {
                         <div className="flex gap-1.5">
                           <button
                             onClick={() => restoreNote(note.id)}
-                            className="p-1.5 bg-white/60 hover:bg-white rounded-md text-blue-600 shadow-sm transition-all"
-                            title="还原"
+                            className="rounded-md bg-white/60 p-1.5 text-blue-600 shadow-sm transition-all hover:bg-white"
+                            title="\u8fd8\u539f"
                           >
                             <RotateCcw size={12} />
                           </button>
                           <button
                             onClick={() => deleteNote(note.id)}
-                            className="p-1.5 bg-white/60 hover:bg-white rounded-md text-red-500 shadow-sm transition-all"
-                            title="删除"
+                            className="rounded-md bg-white/60 p-1.5 text-red-500 shadow-sm transition-all hover:bg-white"
+                            title="\u5220\u9664"
                           >
                             <Trash2 size={12} />
                           </button>
                         </div>
                       </div>
                     </div>
-                  )
+                  );
                 })
               )}
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
