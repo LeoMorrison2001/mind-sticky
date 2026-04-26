@@ -28,6 +28,7 @@ interface Note {
   isPinned: boolean;
   isArchived: boolean;
   createdAt: string;
+  archivedAt?: string;
   zIndex: number;
 }
 
@@ -61,20 +62,67 @@ const NOTE_COLORS = [
 
 const DEFAULT_WIDTH = 260;
 const DEFAULT_HEIGHT = 220;
+const STORAGE_KEY = 'mind-sticky-data';
+const NOTE_MIN_X = 24;
+const NOTE_MIN_Y = 96;
+const NOTE_VIEWPORT_PADDING = 24;
+
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateKey = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day);
+};
+
+const normalizeStoredNotes = (value: unknown): Note[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is Note => {
+    return typeof item === 'object' && item !== null && 'id' in item;
+  });
+};
 
 
 export default function Home() {
   // --- State ---
-  const [isClient, setIsClient] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
+  const hasLoadedNotesRef = useRef(false);
 
-  // Ensure we're on client side before accessing localStorage
+  // Load local data once on mount.
   useEffect(() => {
-    setIsClient(true);
-    const saved = localStorage.getItem('mind-sticky-data');
-    if (saved) {
-      setNotes(JSON.parse(saved));
+    let initialNotes: Note[] = [];
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+
+      if (saved) {
+        initialNotes = normalizeStoredNotes(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.error('Failed to read saved notes from localStorage.', error);
+      localStorage.removeItem(STORAGE_KEY);
     }
+
+    const loadTimer = window.setTimeout(() => {
+      setNotes(initialNotes);
+      hasLoadedNotesRef.current = true;
+    }, 0);
+
+    return () => {
+      window.clearTimeout(loadTimer);
+    };
   }, []);
 
   const [dragState, setDragState] = useState<DragState | null>(null); // { type: 'MOVE' | 'RESIZE', id, startX, startY, initial... }
@@ -82,22 +130,25 @@ export default function Home() {
   const [showArchive, setShowArchive] = useState(false);
 
   // Archive Filter State
-  const [filterDate, setFilterDate] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    }
-    return '';
-  });
+  const [filterDate, setFilterDate] = useState(() => formatDateKey(new Date()));
 
   // Refs for Trash detection
   const trashRef = useRef<HTMLDivElement>(null);
 
   // --- Persistence ---
   useEffect(() => {
-    if (isClient) {
-      localStorage.setItem('mind-sticky-data', JSON.stringify(notes));
+    if (!hasLoadedNotesRef.current || dragState) {
+      return;
     }
-  }, [notes, isClient]);
+
+    const saveTimer = window.setTimeout(() => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+    }, 150);
+
+    return () => {
+      window.clearTimeout(saveTimer);
+    };
+  }, [notes, dragState]);
 
   // --- Helpers ---
   const bringToFront = (id: string) => {
@@ -110,12 +161,19 @@ export default function Home() {
   };
 
   const addNote = () => {
-    if (!isClient) return;
+    const maxX = Math.max(
+      NOTE_MIN_X,
+      window.innerWidth - DEFAULT_WIDTH - NOTE_VIEWPORT_PADDING
+    );
+    const maxY = Math.max(
+      NOTE_MIN_Y,
+      window.innerHeight - DEFAULT_HEIGHT - NOTE_VIEWPORT_PADDING
+    );
 
     const newNote = {
       id: generateId(),
-      x: Math.random() * (window.innerWidth - 400) + 50,
-      y: Math.random() * (window.innerHeight - 400) + 50,
+      x: NOTE_MIN_X + Math.random() * Math.max(0, maxX - NOTE_MIN_X),
+      y: NOTE_MIN_Y + Math.random() * Math.max(0, maxY - NOTE_MIN_Y),
       width: DEFAULT_WIDTH,
       height: DEFAULT_HEIGHT,
       title: '思维贴',
@@ -138,7 +196,20 @@ export default function Home() {
   };
 
   const restoreNote = (id: string) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, isArchived: false } : n));
+    setNotes(prev => prev.map(n => (
+      n.id === id
+        ? { ...n, isArchived: false, archivedAt: undefined }
+        : n
+    )));
+  };
+
+  const archiveNote = (id: string) => {
+    const archivedAt = new Date().toISOString();
+    setNotes(prev => prev.map(n => (
+      n.id === id
+        ? { ...n, isArchived: true, archivedAt }
+        : n
+    )));
   };
 
   // --- Event Handlers (Global) ---
@@ -239,8 +310,8 @@ export default function Home() {
   const archivedNotes = useMemo(() => {
     return notes.filter(n => {
       if (!n.isArchived) return false;
-      const noteDate = n.createdAt.split('T')[0];
-      return noteDate === filterDate;
+      const archiveDate = n.archivedAt ?? n.createdAt;
+      return formatDateKey(new Date(archiveDate)) === filterDate;
     });
   }, [notes, filterDate]);
 
@@ -283,7 +354,7 @@ export default function Home() {
 
       {/* --- Canvas Area (Active Notes) --- */}
       <div className="w-full h-full relative">
-        {isClient && notes.filter(n => !n.isArchived).map((note) => {
+        {notes.filter(n => !n.isArchived).map((note) => {
           const styleConfig = NOTE_COLORS.find(c => c.id === note.color) || NOTE_COLORS[0];
           const isDragging = dragState?.id === note.id;
 
@@ -299,7 +370,7 @@ export default function Home() {
               }}
               // Modern Card: Micro-rounded (rounded-xl), subtle border, nice shadow
               className={`
-                absolute flex flex-col
+                group absolute flex flex-col
                 rounded-xl border
                 transition-shadow duration-200 ease-out
                 ${styleConfig.bg} ${styleConfig.text} ${styleConfig.border}
@@ -359,7 +430,7 @@ export default function Home() {
                   {/* Archive Button */}
                   <button
                     onMouseDown={(e) => e.stopPropagation()}
-                    onClick={() => updateNote(note.id, { isArchived: true })}
+                    onClick={() => archiveNote(note.id)}
                     className="text-black/30 hover:text-black/70 p-1 rounded hover:bg-black/5 transition-colors ml-1"
                     title="归档"
                   >
@@ -443,7 +514,7 @@ export default function Home() {
               <div className="flex items-center justify-between mb-3">
                 <label className="text-sm font-medium text-gray-700">筛选日期</label>
                 <button
-                  onClick={() => setFilterDate(new Date().toISOString().split('T')[0])}
+                  onClick={() => setFilterDate(formatDateKey(new Date()))}
                   className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                 >
                   今天
@@ -452,10 +523,10 @@ export default function Home() {
 
               {/* Date Picker */}
               <DatePicker
-                selected={filterDate ? new Date(filterDate) : null}
+                selected={filterDate ? parseDateKey(filterDate) : null}
                 onChange={(date: Date | null) => {
                   if (date) {
-                    setFilterDate(date.toISOString().split('T')[0]);
+                    setFilterDate(formatDateKey(date));
                   }
                 }}
                 dateFormat="yyyy年MM月dd日"
@@ -521,7 +592,7 @@ export default function Home() {
                         {note.content || '(无内容)'}
                       </p>
                       <div className="mt-3 flex items-center justify-between text-[10px] font-medium text-black/30">
-                        <span>{new Date(note.createdAt).toLocaleTimeString()}</span>
+                        <span>{new Date(note.archivedAt ?? note.createdAt).toLocaleTimeString()}</span>
 
                         <div className="flex gap-1.5">
                           <button
