@@ -20,15 +20,17 @@ import {
 } from '../lib/notes';
 
 interface DragState {
-  type: 'MOVE' | 'RESIZE';
-  id: string;
+  type: 'MOVE' | 'RESIZE' | 'PAN';
+  id?: string;
   pointerId: number;
   startX: number;
   startY: number;
-  initialX: number;
-  initialY: number;
+  initialX?: number;
+  initialY?: number;
   initialW?: number;
   initialH?: number;
+  initialViewportX?: number;
+  initialViewportY?: number;
 }
 
 const NOTE_COLORS = [
@@ -41,16 +43,40 @@ const NOTE_COLORS = [
 ] as const;
 
 const STORAGE_KEY = 'mind-sticky-data';
+const VIEWPORT_STORAGE_KEY = 'mind-sticky-viewport';
+
+const readViewportFromStorage = (storageValue: string | null) => {
+  if (!storageValue) {
+    return { x: 0, y: 0 };
+  }
+
+  const parsed = JSON.parse(storageValue);
+  if (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    typeof parsed.x === 'number' &&
+    Number.isFinite(parsed.x) &&
+    typeof parsed.y === 'number' &&
+    Number.isFinite(parsed.y)
+  ) {
+    return { x: parsed.x, y: parsed.y };
+  }
+
+  return { x: 0, y: 0 };
+};
 
 export default function Home() {
   const [notes, setNotes] = useState<Note[]>([]);
+  const [viewport, setViewport] = useState({ x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [isTrashActive, setIsTrashActive] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [filterDate, setFilterDate] = useState(() => formatDateKey(new Date()));
 
   const trashRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef<Note[]>([]);
+  const viewportRef = useRef(viewport);
   const dragStateRef = useRef<DragState | null>(null);
   const hasLoadedNotesRef = useRef(false);
   const isTrashActiveRef = useRef(false);
@@ -69,17 +95,25 @@ export default function Home() {
   }, [notes]);
 
   useEffect(() => {
+    viewportRef.current = viewport;
+  }, [viewport]);
+
+  useEffect(() => {
     let initialNotes: Note[] = [];
+    let initialViewport = { x: 0, y: 0 };
 
     try {
       initialNotes = readNotesFromStorage(localStorage.getItem(STORAGE_KEY));
+      initialViewport = readViewportFromStorage(localStorage.getItem(VIEWPORT_STORAGE_KEY));
     } catch (error) {
-      console.error('Failed to read saved notes from localStorage.', error);
+      console.error('Failed to read saved canvas data from localStorage.', error);
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(VIEWPORT_STORAGE_KEY);
     }
 
     const loadTimer = window.setTimeout(() => {
       setNotes(initialNotes);
+      setViewport(initialViewport);
       hasLoadedNotesRef.current = true;
     }, 0);
 
@@ -95,12 +129,13 @@ export default function Home() {
 
     const saveTimer = window.setTimeout(() => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+      localStorage.setItem(VIEWPORT_STORAGE_KEY, JSON.stringify(viewport));
     }, 150);
 
     return () => {
       window.clearTimeout(saveTimer);
     };
-  }, [notes, dragState]);
+  }, [notes, viewport, dragState]);
 
   useEffect(() => {
     return () => {
@@ -160,7 +195,13 @@ export default function Home() {
   const addNote = () => {
     setNotes((prev) => [
       ...prev,
-      createNote(window.innerWidth, window.innerHeight, getNextZIndex(prev)),
+      {
+        ...createNote(window.innerWidth, window.innerHeight, getNextZIndex(prev)),
+        x:
+          window.innerWidth / 2 - 130 - viewportRef.current.x,
+        y:
+          window.innerHeight / 2 - 110 - viewportRef.current.y,
+      },
     ]);
   };
 
@@ -187,7 +228,7 @@ export default function Home() {
   const handlePointerDown = (
     e: React.PointerEvent<HTMLDivElement>,
     note: Note,
-    type: DragState['type']
+    type: 'MOVE' | 'RESIZE'
   ) => {
     if (note.isPinned && type === 'MOVE') {
       return;
@@ -218,6 +259,27 @@ export default function Home() {
     setDragState(nextDragState);
   };
 
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target !== e.currentTarget) {
+      return;
+    }
+
+    e.preventDefault();
+
+    const nextDragState: DragState = {
+      type: 'PAN',
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialViewportX: viewportRef.current.x,
+      initialViewportY: viewportRef.current.y,
+    };
+
+    dragStateRef.current = nextDragState;
+    setDragState(nextDragState);
+  };
+
   useEffect(() => {
     if (!dragState) {
       return;
@@ -234,12 +296,20 @@ export default function Home() {
       const deltaX = e.clientX - activeDrag.startX;
       const deltaY = e.clientY - activeDrag.startY;
 
+      if (activeDrag.type === 'PAN') {
+        setViewport({
+          x: (activeDrag.initialViewportX ?? 0) + deltaX,
+          y: (activeDrag.initialViewportY ?? 0) + deltaY,
+        });
+        return;
+      }
+
       if (activeDrag.type === 'MOVE') {
         scheduleDragUpdate({
-          id: activeDrag.id,
+          id: activeDrag.id!,
           type: 'MOVE',
-          x: activeDrag.initialX + deltaX,
-          y: activeDrag.initialY + deltaY,
+          x: (activeDrag.initialX ?? 0) + deltaX,
+          y: (activeDrag.initialY ?? 0) + deltaY,
         });
 
         if (trashRef.current) {
@@ -255,7 +325,7 @@ export default function Home() {
         }
       } else {
         scheduleDragUpdate({
-          id: activeDrag.id,
+          id: activeDrag.id!,
           type: 'RESIZE',
           width: Math.max(200, (activeDrag.initialW ?? 260) + deltaX),
           height: Math.max(150, (activeDrag.initialH ?? 220) + deltaY),
@@ -275,7 +345,7 @@ export default function Home() {
         applyPendingDragUpdate();
       }
 
-      if (activeDrag.type === 'MOVE' && isTrashActiveRef.current) {
+      if (activeDrag.type === 'MOVE' && isTrashActiveRef.current && activeDrag.id) {
         deleteNote(activeDrag.id);
       }
 
@@ -315,6 +385,7 @@ export default function Home() {
           backgroundImage:
             'linear-gradient(#E5E7EB 1px, transparent 1px), linear-gradient(90deg, #E5E7EB 1px, transparent 1px)',
           backgroundSize: '40px 40px',
+          backgroundPosition: `${viewport.x}px ${viewport.y}px`,
         }}
       />
 
@@ -331,6 +402,17 @@ export default function Home() {
         </button>
 
         <button
+          onClick={() => setViewport({ x: 0, y: 0 })}
+          className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
+          title="\u56de\u5230\u4e2d\u5fc3"
+        >
+          <RotateCcw size={20} strokeWidth={2.2} />
+          <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
+            {'\u56de\u5230\u4e2d\u5fc3'}
+          </div>
+        </button>
+
+        <button
           onClick={() => setShowArchive(true)}
           className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
           title="\u5f52\u6863"
@@ -342,7 +424,12 @@ export default function Home() {
         </button>
       </div>
 
-      <div className="relative h-full w-full">
+      <div
+        ref={canvasRef}
+        className={`relative h-full w-full ${dragState?.type === 'PAN' ? 'cursor-grabbing' : 'cursor-grab'}`}
+        style={{ touchAction: 'none' }}
+        onPointerDown={handleCanvasPointerDown}
+      >
         {notes.filter((note) => !note.isArchived).map((note) => {
           const styleConfig = NOTE_COLORS.find((color) => color.id === note.color) ?? NOTE_COLORS[0];
           const isDragging = dragState?.id === note.id;
@@ -351,8 +438,8 @@ export default function Home() {
             <div
               key={note.id}
               style={{
-                left: note.x,
-                top: note.y,
+                left: note.x + viewport.x,
+                top: note.y + viewport.y,
                 width: note.width,
                 height: note.height,
                 zIndex: isDragging ? 9999 : note.zIndex,
