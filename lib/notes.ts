@@ -82,7 +82,7 @@ export const normalizeStoredNotes = (value: unknown): Note[] => {
     return [];
   }
 
-  return value.filter(isNoteRecord);
+  return normalizeNoteZIndices(value.filter(isNoteRecord));
 };
 
 export const readNotesFromStorage = (storageValue: string | null): Note[] => {
@@ -97,9 +97,24 @@ export const getNextZIndex = (notes: Note[]) => {
   return notes.reduce((max, note) => Math.max(max, note.zIndex), 0) + 1;
 };
 
+export const normalizeNoteZIndices = (notes: Note[]) => {
+  const sortedIds = [...notes]
+    .sort((left, right) => left.zIndex - right.zIndex)
+    .map((note) => note.id);
+
+  const nextZIndexById = new Map(sortedIds.map((id, index) => [id, index + 1]));
+
+  return notes.map((note) => ({
+    ...note,
+    zIndex: nextZIndexById.get(note.id) ?? note.zIndex,
+  }));
+};
+
 export const bringNoteToFront = (notes: Note[], id: string) => {
-  const nextZIndex = getNextZIndex(notes);
-  return notes.map((note) => (
+  const normalizedNotes = normalizeNoteZIndices(notes);
+  const nextZIndex = getNextZIndex(normalizedNotes);
+
+  return normalizedNotes.map((note) => (
     note.id === id
       ? { ...note, zIndex: nextZIndex }
       : note

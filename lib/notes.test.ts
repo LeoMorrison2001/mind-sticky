@@ -7,6 +7,7 @@ import {
   createNote,
   filterArchivedNotes,
   formatDateKey,
+  normalizeNoteZIndices,
   normalizeStoredNotes,
   parseDateKey,
   readNotesFromStorage,
@@ -42,10 +43,10 @@ describe('notes helpers', () => {
 
   it('filters invalid stored notes', () => {
     const invalid = { ...baseNote, color: 'invalid' };
-    const valid = { ...baseNote, id: 'note-2', color: 'blue' as const };
+    const valid = { ...baseNote, id: 'note-2', color: 'blue' as const, zIndex: 99 };
 
-    expect(normalizeStoredNotes([invalid, valid])).toEqual([valid]);
-    expect(readNotesFromStorage(JSON.stringify([invalid, valid]))).toEqual([valid]);
+    expect(normalizeStoredNotes([invalid, valid])).toEqual([{ ...valid, zIndex: 1 }]);
+    expect(readNotesFromStorage(JSON.stringify([invalid, valid]))).toEqual([{ ...valid, zIndex: 1 }]);
     expect(readNotesFromStorage(null)).toEqual([]);
   });
 
@@ -85,6 +86,16 @@ describe('notes helpers', () => {
     ];
     const reordered = bringNoteToFront(notes, 'note-1');
     expect(reordered.find((item) => item.id === 'note-1')?.zIndex).toBe(3);
+  });
+
+  it('normalizes legacy large z-index values into a compact stack order', () => {
+    const normalized = normalizeNoteZIndices([
+      { ...baseNote, id: 'note-1', zIndex: 1714200000000 },
+      { ...baseNote, id: 'note-2', zIndex: 1714300000000 },
+      { ...baseNote, id: 'note-3', zIndex: 1714400000000 },
+    ]);
+
+    expect(normalized.map((note) => note.zIndex)).toEqual([1, 2, 3]);
   });
 
   it('arranges active notes into a predictable grid without touching archived notes', () => {

@@ -410,48 +410,48 @@ export default function Home() {
         }}
       />
 
-      <div className="absolute top-6 left-6 z-[10000] flex flex-col gap-3">
+      <div className="absolute top-6 left-6 z-[1000000] flex flex-col gap-3">
         <button
           onClick={addNote}
           className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
-          title="\u65b0\u5efa\u4fbf\u7b7e"
+          title="新建便签"
         >
           <Plus size={22} strokeWidth={2.5} />
           <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
-            {'\u65b0\u5efa\u4fbf\u7b7e'}
+            新建便签
           </div>
         </button>
 
         <button
           onClick={() => setViewport({ x: 0, y: 0 })}
           className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
-          title="\u56de\u5230\u4e2d\u5fc3"
+          title="回到中心"
         >
           <RotateCcw size={20} strokeWidth={2.2} />
           <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
-            {'\u56de\u5230\u4e2d\u5fc3'}
+            回到中心
           </div>
         </button>
 
         <button
           onClick={organizeNotes}
           className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
-          title="\u4e00\u952e\u6574\u7406"
+          title="一键整理"
         >
           <LayoutGrid size={20} strokeWidth={2.2} />
           <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
-            {'\u4e00\u952e\u6574\u7406'}
+            一键整理
           </div>
         </button>
 
         <button
           onClick={() => setShowArchive(true)}
           className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
-          title="\u5f52\u6863"
+          title="归档"
         >
           <Archive size={22} strokeWidth={2} />
           <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
-            {'\u5f52\u6863'}
+            归档
           </div>
         </button>
       </div>
@@ -474,7 +474,7 @@ export default function Home() {
                 top: note.y + viewport.y,
                 width: note.width,
                 height: note.height,
-                zIndex: isDragging ? 9999 : note.zIndex,
+                zIndex: isDragging ? 999999 : note.zIndex,
                 touchAction: 'none',
               }}
               className={`
@@ -506,7 +506,7 @@ export default function Home() {
                       rounded p-1 transition-colors hover:bg-black/5
                       ${note.isPinned ? 'text-red-500' : 'text-black/20 hover:text-black/50'}
                     `}
-                    title={note.isPinned ? '\u53d6\u6d88\u56fa\u5b9a' : '\u56fa\u5b9a'}
+                    title={note.isPinned ? '取消固定' : '固定'}
                   >
                     <Pin size={14} fill={note.isPinned ? 'currentColor' : 'none'} />
                   </button>
@@ -530,7 +530,7 @@ export default function Home() {
                           ${color.dot}
                           ${note.color === color.id ? 'scale-110 ring-2 ring-black/20' : ''}
                         `}
-                        title="\u66f4\u6539\u989c\u8272"
+                        title="更改颜色"
                       />
                     ))}
                   </div>
@@ -539,7 +539,7 @@ export default function Home() {
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => archiveNote(note.id)}
                     className="ml-1 rounded p-1 text-black/30 transition-colors hover:bg-black/5 hover:text-black/70"
-                    title="\u5f52\u6863"
+                    title="归档"
                   >
                     <Archive size={16} />
                   </button>
@@ -552,14 +552,14 @@ export default function Home() {
                   value={note.title}
                   onPointerDown={(e) => e.stopPropagation()}
                   onChange={(e) => updateNote(note.id, { title: e.target.value })}
-                  placeholder="\u6807\u9898"
+                  placeholder="标题"
                   className="mb-1 w-full bg-transparent text-lg font-bold placeholder-black/20 focus:outline-none"
                 />
                 <textarea
                   value={note.content}
                   onPointerDown={(e) => e.stopPropagation()}
                   onChange={(e) => updateNote(note.id, { content: e.target.value })}
-                  placeholder="\u5728\u6b64\u8f93\u5165\u5185\u5bb9..."
+                  placeholder="在此输入内容..."
                   className="flex-1 w-full resize-none bg-transparent text-[14px] leading-relaxed placeholder-black/30 selection:bg-black/10 focus:outline-none"
                 />
               </div>
@@ -604,7 +604,7 @@ export default function Home() {
             <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 p-5">
               <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
                 <Archive size={18} className="text-gray-500" />
-                {'\u5f52\u6863\u7ba1\u7406'}
+                归档管理
               </h2>
               <button
                 onClick={() => setShowArchive(false)}
@@ -616,12 +616,12 @@ export default function Home() {
 
             <div className="border-b border-gray-100 px-5 py-4">
               <div className="mb-3 flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">{'\u7b5b\u9009\u65e5\u671f'}</label>
+                <label className="text-sm font-medium text-gray-700">筛选日期</label>
                 <button
                   onClick={() => setFilterDate(formatDateKey(new Date()))}
                   className="text-xs font-medium text-blue-600 hover:text-blue-700"
                 >
-                  {'\u4eca\u5929'}
+                  今天
                 </button>
               </div>
 
@@ -632,10 +632,10 @@ export default function Home() {
                     setFilterDate(formatDateKey(date));
                   }
                 }}
-                dateFormat="yyyy\u5e74 M\u6708 d\u65e5"
+                dateFormat="yyyy年 M月 d日"
                 locale={zhCN}
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
-                placeholderText="\u9009\u62e9\u65e5\u671f"
+                placeholderText="选择日期"
                 maxDate={new Date()}
                 inline={false}
                 calendarClassName="custom-datepicker rounded-lg border border-gray-200 shadow-lg"
@@ -658,9 +658,9 @@ export default function Home() {
                     </button>
                     <span className="text-sm font-medium text-gray-900">
                       {date.getFullYear()}
-                      {'\u5e74 '}
+                      年
                       {date.getMonth() + 1}
-                      {'\u6708'}
+                      月
                     </span>
                     <button
                       onClick={increaseMonth}
@@ -674,7 +674,7 @@ export default function Home() {
                   </div>
                 )}
                 formatWeekDay={(day) =>
-                  ['\u65e5', '\u4e00', '\u4e8c', '\u4e09', '\u56db', '\u4e94', '\u516d'][
+                  ['日', '一', '二', '三', '四', '五', '六'][
                     ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(day)
                   ]
                 }
@@ -685,7 +685,7 @@ export default function Home() {
               {archivedNotes.length === 0 ? (
                 <div className="py-10 text-center text-gray-400">
                   <Search size={40} className="mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">{'\u6682\u65e0\u5f52\u6863'}</p>
+                  <p className="text-sm">暂无归档</p>
                 </div>
               ) : (
                 archivedNotes.map((note) => {
@@ -696,10 +696,10 @@ export default function Home() {
                       className={`group relative rounded-xl border p-4 transition-transform hover:scale-[1.02] ${styleConfig.bg} ${styleConfig.border}`}
                     >
                       <h3 className="mb-1 truncate text-sm font-bold text-gray-800">
-                        {note.title || '\u65e0\u6807\u9898'}
+                        {note.title || '无标题'}
                       </h3>
                       <p className="line-clamp-2 text-xs text-gray-600/80">
-                        {note.content || '(\u65e0\u5185\u5bb9)'}
+                        {note.content || '(无内容)'}
                       </p>
                       <div className="mt-3 flex items-center justify-between text-[10px] font-medium text-black/30">
                         <span>{new Date(note.archivedAt ?? note.createdAt).toLocaleTimeString()}</span>
@@ -708,14 +708,14 @@ export default function Home() {
                           <button
                             onClick={() => restoreNote(note.id)}
                             className="rounded-md bg-white/60 p-1.5 text-blue-600 shadow-sm transition-all hover:bg-white"
-                            title="\u8fd8\u539f"
+                            title="还原"
                           >
                             <RotateCcw size={12} />
                           </button>
                           <button
                             onClick={() => deleteNote(note.id)}
                             className="rounded-md bg-white/60 p-1.5 text-red-500 shadow-sm transition-all hover:bg-white"
-                            title="\u5220\u9664"
+                            title="删除"
                           >
                             <Trash2 size={12} />
                           </button>
