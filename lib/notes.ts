@@ -16,6 +16,18 @@ export interface Note {
   zIndex: number;
 }
 
+export interface ViewportState {
+  x: number;
+  y: number;
+}
+
+export interface CanvasSnapshot {
+  version: 1;
+  exportedAt: string;
+  notes: Note[];
+  viewport: ViewportState;
+}
+
 const NOTE_COLORS: NoteColor[] = ['yellow', 'blue', 'green', 'rose', 'purple', 'gray'];
 const DEFAULT_WIDTH = 350;
 const DEFAULT_HEIGHT = 340;
@@ -34,6 +46,15 @@ const isFiniteNumber = (value: unknown): value is number => {
 
 const isNoteColor = (value: unknown): value is NoteColor => {
   return typeof value === 'string' && NOTE_COLORS.includes(value as NoteColor);
+};
+
+const isViewportState = (value: unknown): value is ViewportState => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    isFiniteNumber((value as ViewportState).x) &&
+    isFiniteNumber((value as ViewportState).y)
+  );
 };
 
 const isNoteRecord = (value: unknown): value is Note => {
@@ -93,6 +114,38 @@ export const readNotesFromStorage = (storageValue: string | null): Note[] => {
   return normalizeStoredNotes(JSON.parse(storageValue));
 };
 
+export const createCanvasSnapshot = (
+  notes: Note[],
+  viewport: ViewportState
+): CanvasSnapshot => {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    notes: normalizeNoteZIndices(notes),
+    viewport,
+  };
+};
+
+export const parseCanvasSnapshot = (value: string): CanvasSnapshot => {
+  const parsed = JSON.parse(value) as Partial<CanvasSnapshot>;
+
+  if (
+    parsed.version !== 1 ||
+    !isIsoDateString(parsed.exportedAt) ||
+    !Array.isArray(parsed.notes) ||
+    !isViewportState(parsed.viewport)
+  ) {
+    throw new Error('Invalid snapshot format');
+  }
+
+  return {
+    version: 1,
+    exportedAt: parsed.exportedAt,
+    notes: normalizeStoredNotes(parsed.notes),
+    viewport: parsed.viewport,
+  };
+};
+
 export const getNextZIndex = (notes: Note[]) => {
   return notes.reduce((max, note) => Math.max(max, note.zIndex), 0) + 1;
 };
@@ -119,6 +172,33 @@ export const bringNoteToFront = (notes: Note[], id: string) => {
       ? { ...note, zIndex: nextZIndex }
       : note
   ));
+};
+
+export const filterNotesByCreatedDateRange = (
+  notes: Note[],
+  startDate: string,
+  endDate: string
+) => {
+  return notes.filter((note) => {
+    const createdDateKey = formatDateKey(new Date(note.createdAt));
+    return createdDateKey >= startDate && createdDateKey <= endDate;
+  });
+};
+
+export const mergeImportedNotes = (existingNotes: Note[], importedNotes: Note[]) => {
+  let nextZIndex = getNextZIndex(existingNotes);
+
+  const mergedImportedNotes = importedNotes.map((note) => {
+    const mappedNote: Note = {
+      ...note,
+      id: `${note.id}-${Math.random().toString(36).substring(2, 8)}`,
+      zIndex: nextZIndex,
+    };
+    nextZIndex += 1;
+    return mappedNote;
+  });
+
+  return normalizeNoteZIndices([...existingNotes, ...mergedImportedNotes]);
 };
 
 export const createNote = (

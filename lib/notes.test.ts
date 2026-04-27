@@ -4,11 +4,15 @@ import {
   archiveNoteRecord,
   arrangeNotesInGrid,
   bringNoteToFront,
+  createCanvasSnapshot,
   createNote,
   filterArchivedNotes,
+  filterNotesByCreatedDateRange,
   formatDateKey,
+  mergeImportedNotes,
   normalizeNoteZIndices,
   normalizeStoredNotes,
+  parseCanvasSnapshot,
   parseDateKey,
   readNotesFromStorage,
   restoreNoteRecord,
@@ -122,5 +126,37 @@ describe('notes helpers', () => {
     expect(arranged.notes.find((note) => note.id === 'note-2')).toMatchObject({ x: 370, y: 200 });
     expect(arranged.notes.find((note) => note.id === 'note-3')).toMatchObject({ x: 100, y: 440 });
     expect(arranged.notes.find((note) => note.id === 'archived')).toMatchObject({ isArchived: true });
+  });
+
+  it('creates and parses a full canvas snapshot', () => {
+    const snapshot = createCanvasSnapshot([baseNote], { x: 12, y: -40 });
+    const parsed = parseCanvasSnapshot(JSON.stringify(snapshot));
+
+    expect(parsed.version).toBe(1);
+    expect(parsed.notes).toEqual([baseNote]);
+    expect(parsed.viewport).toEqual({ x: 12, y: -40 });
+  });
+
+  it('filters notes by created date range using local date keys', () => {
+    const rangeNotes = [
+      { ...baseNote, id: 'note-1', createdAt: '2026-04-20T08:00:00.000Z' },
+      { ...baseNote, id: 'note-2', createdAt: '2026-04-25T08:00:00.000Z' },
+      { ...baseNote, id: 'note-3', createdAt: '2026-04-29T08:00:00.000Z' },
+    ];
+
+    expect(filterNotesByCreatedDateRange(rangeNotes, '2026-04-21', '2026-04-28')).toEqual([
+      rangeNotes[1],
+    ]);
+  });
+
+  it('merges imported notes without reusing ids', () => {
+    const merged = mergeImportedNotes(
+      [{ ...baseNote, id: 'current', zIndex: 1 }],
+      [{ ...baseNote, id: 'imported', zIndex: 99 }]
+    );
+
+    expect(merged).toHaveLength(2);
+    expect(new Set(merged.map((note) => note.id)).size).toBe(2);
+    expect(merged.map((note) => note.zIndex)).toEqual([1, 2]);
   });
 });

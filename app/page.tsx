@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2, Archive, X, Pin, Search, RotateCcw, LayoutGrid } from 'lucide-react';
+import { Plus, Trash2, Archive, X, Pin, Search, RotateCcw, LayoutGrid, Download, Upload } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import { zhCN } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -10,14 +10,19 @@ import {
   archiveNoteRecord,
   arrangeNotesInGrid,
   bringNoteToFront,
+  createCanvasSnapshot,
   createNote,
   filterArchivedNotes,
+  filterNotesByCreatedDateRange,
   formatDateKey,
   getNextZIndex,
+  mergeImportedNotes,
+  parseCanvasSnapshot,
   parseDateKey,
   readNotesFromStorage,
   restoreNoteRecord,
   type Note,
+  type CanvasSnapshot,
 } from '../lib/notes';
 
 interface DragState {
@@ -82,10 +87,18 @@ export default function Home() {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [isTrashActive, setIsTrashActive] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importMode, setImportMode] = useState<'full' | 'range'>('full');
+  const [importStartDate, setImportStartDate] = useState('');
+  const [importEndDate, setImportEndDate] = useState('');
+  const [importError, setImportError] = useState('');
+  const [pendingImportSnapshot, setPendingImportSnapshot] = useState<CanvasSnapshot | null>(null);
+  const [pendingImportFileName, setPendingImportFileName] = useState('');
   const [filterDate, setFilterDate] = useState(() => formatDateKey(new Date()));
 
   const trashRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<Note[]>([]);
   const viewportRef = useRef(viewport);
   const dragStateRef = useRef<DragState | null>(null);
@@ -256,6 +269,93 @@ export default function Home() {
     });
   };
 
+  const exportAllData = () => {
+    const snapshot = createCanvasSnapshot(notesRef.current, viewportRef.current);
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
+      type: 'application/json;charset=utf-8',
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = `mind-sticky-backup-${formatDateKey(new Date())}.json`;
+    anchor.click();
+    URL.revokeObjectURL(downloadUrl);
+  };
+
+  const openImportPicker = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const snapshot = parseCanvasSnapshot(await file.text());
+      setPendingImportSnapshot(snapshot);
+      setPendingImportFileName(file.name);
+      setImportMode('full');
+      setImportStartDate('');
+      setImportEndDate('');
+      setImportError('');
+      setShowImportDialog(true);
+    } catch (error) {
+      console.error('Failed to parse import file.', error);
+      setImportError('导入文件格式不正确，请选择有效的 JSON 备份文件。');
+      setPendingImportSnapshot(null);
+      setPendingImportFileName('');
+      setShowImportDialog(true);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const applyImport = () => {
+    if (!pendingImportSnapshot) {
+      return;
+    }
+
+    if (importMode === 'full') {
+      setNotes(pendingImportSnapshot.notes);
+      setViewport(pendingImportSnapshot.viewport);
+      setShowImportDialog(false);
+      setImportError('');
+      setPendingImportSnapshot(null);
+      setPendingImportFileName('');
+      return;
+    }
+
+    if (!importStartDate || !importEndDate) {
+      setImportError('请选择开始和结束日期。');
+      return;
+    }
+
+    if (importStartDate > importEndDate) {
+      setImportError('开始日期不能晚于结束日期。');
+      return;
+    }
+
+    const filteredNotes = filterNotesByCreatedDateRange(
+      pendingImportSnapshot.notes,
+      importStartDate,
+      importEndDate
+    );
+
+    if (filteredNotes.length === 0) {
+      setImportError('所选日期范围内没有可导入的便签。');
+      return;
+    }
+
+    setNotes((prev) => mergeImportedNotes(prev, filteredNotes));
+    setShowImportDialog(false);
+    setImportError('');
+    setPendingImportSnapshot(null);
+    setPendingImportFileName('');
+  };
+
   const handlePointerDown = (
     e: React.PointerEvent<HTMLDivElement>,
     note: Note,
@@ -410,6 +510,14 @@ export default function Home() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gray-50 font-sans text-gray-800">
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={handleImportFileChange}
+      />
+
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.4]"
         style={{
@@ -451,6 +559,28 @@ export default function Home() {
           <LayoutGrid size={20} strokeWidth={2.2} />
           <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
             一键整理
+          </div>
+        </button>
+
+        <button
+          onClick={exportAllData}
+          className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
+          title="导出备份"
+        >
+          <Download size={20} strokeWidth={2.2} />
+          <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
+            导出备份
+          </div>
+        </button>
+
+        <button
+          onClick={openImportPicker}
+          className="group relative flex items-center justify-center rounded-xl border border-gray-200 bg-white p-3.5 text-gray-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all hover:scale-105 hover:bg-gray-50 active:scale-95"
+          title="导入备份"
+        >
+          <Upload size={20} strokeWidth={2.2} />
+          <div className="pointer-events-none absolute left-full ml-3 rounded-md bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white opacity-0 transition-opacity group-hover:opacity-100">
+            导入备份
           </div>
         </button>
 
@@ -735,6 +865,128 @@ export default function Home() {
                 })
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showImportDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/10 backdrop-blur-[1px]"
+            onClick={() => setShowImportDialog(false)}
+          />
+
+          <div className="relative w-[440px] rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">导入备份</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {pendingImportFileName
+                    ? `已选择文件：${pendingImportFileName}`
+                    : '请选择一个导出的 JSON 备份文件。'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowImportDialog(false)}
+                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {pendingImportSnapshot ? (
+              <>
+                <div className="space-y-3">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 hover:border-gray-300">
+                    <input
+                      type="radio"
+                      name="import-mode"
+                      checked={importMode === 'full'}
+                      onChange={() => {
+                        setImportMode('full');
+                        setImportError('');
+                      }}
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">全盘导入</div>
+                      <div className="text-xs text-gray-500">覆盖当前便签和画布视口，完整恢复备份内容。</div>
+                    </div>
+                  </label>
+
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 hover:border-gray-300">
+                    <input
+                      type="radio"
+                      name="import-mode"
+                      checked={importMode === 'range'}
+                      onChange={() => {
+                        setImportMode('range');
+                        setImportError('');
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="w-full">
+                      <div className="text-sm font-medium text-gray-900">按日期范围导入</div>
+                      <div className="mb-3 text-xs text-gray-500">按便签创建日期筛选后追加导入到当前画布。</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="text-xs text-gray-600">
+                          <div className="mb-1">开始日期</div>
+                          <input
+                            type="date"
+                            value={importStartDate}
+                            onChange={(e) => setImportStartDate(e.target.value)}
+                            disabled={importMode !== 'range'}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                        </label>
+                        <label className="text-xs text-gray-600">
+                          <div className="mb-1">结束日期</div>
+                          <input
+                            type="date"
+                            value={importEndDate}
+                            onChange={(e) => setImportEndDate(e.target.value)}
+                            disabled={importMode !== 'range'}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                {importError && (
+                  <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{importError}</p>
+                )}
+
+                <div className="mt-5 flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowImportDialog(false)}
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={applyImport}
+                    className="rounded-xl bg-gray-900 px-4 py-2 text-sm text-white transition-colors hover:bg-gray-800"
+                  >
+                    开始导入
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {importError && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{importError}</p>
+                )}
+                <div className="mt-5 flex justify-end">
+                  <button
+                    onClick={() => setShowImportDialog(false)}
+                    className="rounded-xl bg-gray-900 px-4 py-2 text-sm text-white transition-colors hover:bg-gray-800"
+                  >
+                    知道了
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
