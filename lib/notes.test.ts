@@ -73,11 +73,13 @@ describe('notes helpers', () => {
   });
 
   it('creates notes inside viewport bounds and can reorder z-index', () => {
-    const note = createNote(320, 568, 7);
+    const note = createNote(420, 700, 7);
     expect(note.x).toBeGreaterThanOrEqual(24);
     expect(note.y).toBeGreaterThanOrEqual(96);
-    expect(note.x + note.width).toBeLessThanOrEqual(320 - 24 + 0.00001);
-    expect(note.y + note.height).toBeLessThanOrEqual(568 - 24 + 0.00001);
+    expect(note.width).toBe(350);
+    expect(note.height).toBe(340);
+    expect(note.x + note.width).toBeLessThanOrEqual(420 - 24 + 0.00001);
+    expect(note.y + note.height).toBeLessThanOrEqual(700 - 24 + 0.00001);
     expect(note.zIndex).toBe(7);
 
     const notes = [

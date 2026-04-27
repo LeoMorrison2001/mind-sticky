@@ -35,12 +35,12 @@ interface DragState {
 }
 
 const NOTE_COLORS = [
-  { id: 'yellow', bg: 'bg-amber-50', text: 'text-amber-900', border: 'border-amber-200/60', dot: 'bg-amber-400' },
-  { id: 'blue', bg: 'bg-blue-50', text: 'text-blue-900', border: 'border-blue-200/60', dot: 'bg-blue-400' },
-  { id: 'green', bg: 'bg-emerald-50', text: 'text-emerald-900', border: 'border-emerald-200/60', dot: 'bg-emerald-400' },
-  { id: 'rose', bg: 'bg-rose-50', text: 'text-rose-900', border: 'border-rose-200/60', dot: 'bg-rose-400' },
-  { id: 'purple', bg: 'bg-violet-50', text: 'text-violet-900', border: 'border-violet-200/60', dot: 'bg-violet-400' },
-  { id: 'gray', bg: 'bg-gray-50', text: 'text-gray-900', border: 'border-gray-200/60', dot: 'bg-gray-400' },
+  { id: 'yellow', bg: 'bg-amber-50', text: 'text-amber-900', border: 'border-amber-200/60', dot: 'bg-amber-400', scrollThumb: '#f59e0b', scrollTrack: '#fef3c7' },
+  { id: 'blue', bg: 'bg-blue-50', text: 'text-blue-900', border: 'border-blue-200/60', dot: 'bg-blue-400', scrollThumb: '#60a5fa', scrollTrack: '#dbeafe' },
+  { id: 'green', bg: 'bg-emerald-50', text: 'text-emerald-900', border: 'border-emerald-200/60', dot: 'bg-emerald-400', scrollThumb: '#34d399', scrollTrack: '#d1fae5' },
+  { id: 'rose', bg: 'bg-rose-50', text: 'text-rose-900', border: 'border-rose-200/60', dot: 'bg-rose-400', scrollThumb: '#fb7185', scrollTrack: '#ffe4e6' },
+  { id: 'purple', bg: 'bg-violet-50', text: 'text-violet-900', border: 'border-violet-200/60', dot: 'bg-violet-400', scrollThumb: '#a78bfa', scrollTrack: '#ede9fe' },
+  { id: 'gray', bg: 'bg-gray-50', text: 'text-gray-900', border: 'border-gray-200/60', dot: 'bg-gray-400', scrollThumb: '#9ca3af', scrollTrack: '#e5e7eb' },
 ] as const;
 
 const STORAGE_KEY = 'mind-sticky-data';
@@ -64,6 +64,16 @@ const readViewportFromStorage = (storageValue: string | null) => {
   }
 
   return { x: 0, y: 0 };
+};
+
+const formatNoteDateTime = (value: string) => {
+  return new Date(value).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 export default function Home() {
@@ -348,8 +358,8 @@ export default function Home() {
         scheduleDragUpdate({
           id: activeDrag.id!,
           type: 'RESIZE',
-          width: Math.max(200, (activeDrag.initialW ?? 260) + deltaX),
-          height: Math.max(150, (activeDrag.initialH ?? 220) + deltaY),
+          width: Math.max(350, (activeDrag.initialW ?? 350) + deltaX),
+          height: Math.max(340, (activeDrag.initialH ?? 340) + deltaY),
         });
       }
     };
@@ -476,6 +486,8 @@ export default function Home() {
                 height: note.height,
                 zIndex: isDragging ? 999999 : note.zIndex,
                 touchAction: 'none',
+                ['--note-scrollbar-thumb' as string]: styleConfig.scrollThumb,
+                ['--note-scrollbar-track' as string]: styleConfig.scrollTrack,
               }}
               className={`
                 group absolute flex flex-col rounded-xl border
@@ -511,10 +523,7 @@ export default function Home() {
                     <Pin size={14} fill={note.isPinned ? 'currentColor' : 'none'} />
                   </button>
                   <span className="text-[10px] font-medium opacity-40">
-                    {new Date(note.createdAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {formatNoteDateTime(note.createdAt)}
                   </span>
                 </div>
 
@@ -560,7 +569,7 @@ export default function Home() {
                   onPointerDown={(e) => e.stopPropagation()}
                   onChange={(e) => updateNote(note.id, { content: e.target.value })}
                   placeholder="在此输入内容..."
-                  className="flex-1 w-full resize-none bg-transparent text-[14px] leading-relaxed placeholder-black/30 selection:bg-black/10 focus:outline-none"
+                  className="note-scrollbar flex-1 w-full resize-none overflow-y-auto bg-transparent pr-1 text-[14px] leading-relaxed placeholder-black/30 selection:bg-black/10 focus:outline-none"
                 />
               </div>
 
@@ -702,7 +711,7 @@ export default function Home() {
                         {note.content || '(无内容)'}
                       </p>
                       <div className="mt-3 flex items-center justify-between text-[10px] font-medium text-black/30">
-                        <span>{new Date(note.archivedAt ?? note.createdAt).toLocaleTimeString()}</span>
+                        <span>{formatNoteDateTime(note.createdAt)}</span>
 
                         <div className="flex gap-1.5">
                           <button

@@ -24,3 +24,38 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.note-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--note-scrollbar-thumb) transparent;
+}
+
+.note-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.note-scrollbar::-webkit-scrollbar-track {
+  background: var(--note-scrollbar-track);
+  border-radius: 9999px;
+}
+
+.note-scrollbar::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.note-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--note-scrollbar-thumb);
+  border: 1px solid var(--note-scrollbar-track);
+  border-radius: 9999px;
+}
+
+.note-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.note-scrollbar::-webkit-scrollbar-thumb:hover {
+  filter: brightness(0.94);
+}

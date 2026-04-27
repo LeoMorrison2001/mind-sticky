@@ -17,8 +17,8 @@ export interface Note {
 }
 
 const NOTE_COLORS: NoteColor[] = ['yellow', 'blue', 'green', 'rose', 'purple', 'gray'];
-const DEFAULT_WIDTH = 260;
-const DEFAULT_HEIGHT = 220;
+const DEFAULT_WIDTH = 350;
+const DEFAULT_HEIGHT = 340;
 const NOTE_MIN_X = 24;
 const NOTE_MIN_Y = 96;
 const NOTE_VIEWPORT_PADDING = 24;
